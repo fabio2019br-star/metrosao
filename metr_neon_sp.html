@@ -1,0 +1,1699 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>METRÔ NEON SP — Corrida Urbana 3D</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #060913;
+            font-family: 'Inter', sans-serif;
+            touch-action: none;
+            color: #ffffff;
+        }
+        #game-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            z-index: 1;
+        }
+        .font-mono-tech {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .glass-panel {
+            background: rgba(10, 15, 28, 0.78);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+        }
+        .neon-glow-amber {
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.45), inset 0 0 10px rgba(245, 158, 11, 0.2);
+        }
+        .pulse-ring {
+            animation: pulseRing 2.2s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+        }
+        @keyframes pulseRing {
+            0% { transform: scale(0.85); opacity: 0.9; }
+            70% { transform: scale(1.45); opacity: 0; }
+            100% { transform: scale(1.45); opacity: 0; }
+        }
+        @keyframes dashFlow {
+            to { stroke-dashoffset: -48; }
+        }
+        .animated-route {
+            stroke-dasharray: 12 12;
+            animation: dashFlow 1.2s linear infinite;
+        }
+        @keyframes popToast {
+            0% { transform: translate(-50%, 16px) scale(0.9); opacity: 0; }
+            15% { transform: translate(-50%, 0) scale(1.03); opacity: 1; }
+            85% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+            100% { transform: translate(-50%, -10px) scale(0.95); opacity: 0; }
+        }
+        .toast-anim {
+            animation: popToast 1.5s ease-out forwards;
+        }
+        .touch-btn:active {
+            transform: scale(0.9);
+            background: rgba(255, 255, 255, 0.25);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Canvas 3D Principal -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Flash de Impacto / Boost -->
+    <div id="screen-flash" class="fixed inset-0 pointer-events-none z-10 opacity-0 transition-opacity duration-200"></div>
+
+    <!-- ========================================== -->
+    <!-- TELA INICIAL (MAPA NEON DE SÃO PAULO)      -->
+    <!-- ========================================== -->
+    <div id="start-screen" class="fixed inset-0 z-30 flex flex-col justify-between p-4 sm:p-6 bg-[#060a14]/90 backdrop-blur-sm transition-opacity duration-500">
+        
+        <!-- Cabeçalho Superior do Mapa -->
+        <div class="flex items-center justify-between z-10">
+            <div class="glass-panel px-3 py-1.5 rounded-full flex items-center gap-2 text-xs font-mono-tech text-slate-300">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                <span>REDE METRÔ & CPTM • SP NOTURNO</span>
+            </div>
+            <button id="btn-audio-start" class="glass-panel p-2.5 rounded-full text-slate-200 hover:text-white active:scale-95 transition" title="Som">
+                <svg id="icon-sound-on-1" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path></svg>
+                <svg id="icon-sound-off-1" class="w-5 h-5 hidden text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"></path></svg>
+            </button>
+        </div>
+
+        <!-- Mapa Vetorial Neon Interativo de São Paulo -->
+        <div class="relative flex-1 my-3 rounded-3xl overflow-hidden border border-slate-700/60 bg-[#070d19] shadow-2xl flex items-center justify-center">
+            <!-- Grade de ruas estilizada de SP no fundo -->
+            <svg class="w-full h-full object-cover" viewBox="0 0 800 520" preserveAspectRatio="xMidYMid slice">
+                <defs>
+                    <filter id="glow-emerald" x="-30%" y="-30%" width="160%" height="160%">
+                        <feGaussianBlur stdDeviation="6" result="blur" />
+                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                    </filter>
+                    <filter id="glow-amber" x="-30%" y="-30%" width="160%" height="160%">
+                        <feGaussianBlur stdDeviation="6" result="blur" />
+                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                    </filter>
+                    <filter id="glow-blue" x="-30%" y="-30%" width="160%" height="160%">
+                        <feGaussianBlur stdDeviation="6" result="blur" />
+                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                    </filter>
+                    <pattern id="city-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#111c33" stroke-width="1"/>
+                    </pattern>
+                </defs>
+
+                <!-- Fundo e Quadras -->
+                <rect width="800" height="520" fill="#070c18"/>
+                <rect width="800" height="520" fill="url(#city-grid)"/>
+
+                <!-- Rios Pinheiros e Tietê estilizados -->
+                <path d="M 80 520 Q 150 380 210 260 T 240 120" fill="none" stroke="#0d2238" stroke-width="26" stroke-linecap="round"/>
+                <path d="M 180 110 Q 420 125 780 95" fill="none" stroke="#0d2238" stroke-width="30" stroke-linecap="round"/>
+                <text x="115" y="455" fill="#1e3a5f" font-size="11" font-family="JetBrains Mono" transform="rotate(-62 115,455)">RIO PINHEIROS</text>
+                <text x="410" y="100" fill="#1e3a5f" font-size="11" font-family="JetBrains Mono">RIO TIETÊ • MARGINAL</text>
+
+                <!-- Avenidas Secundárias -->
+                <g stroke="#16223b" stroke-width="3" fill="none">
+                    <path d="M 50 350 L 750 280"/>
+                    <path d="M 280 480 L 490 220 L 580 50"/>
+                    <path d="M 320 350 L 530 390"/>
+                    <path d="M 150 200 L 650 180"/>
+                </g>
+
+                <!-- ROTA 1: LINHA 9 - ESMERALDA (Morumbi -> Pinheiros) -->
+                <path d="M 175 420 C 195 365, 225 320, 265 280" fill="none" stroke="#10b981" stroke-width="10" stroke-opacity="0.28" stroke-linecap="round"/>
+                <path d="M 175 420 C 195 365, 225 320, 265 280" fill="none" stroke="#10b981" stroke-width="4" filter="url(#glow-emerald)" stroke-linecap="round"/>
+                <path d="M 175 420 C 195 365, 225 320, 265 280" fill="none" stroke="#a7f3d0" stroke-width="2" class="animated-route" stroke-linecap="round"/>
+
+                <!-- ROTA 2: LINHA 4 - AMARELA (Pinheiros -> Paulista -> Luz) -->
+                <path d="M 265 280 C 330 275, 395 260, 445 225 C 485 198, 515 180, 540 165" fill="none" stroke="#facc15" stroke-width="10" stroke-opacity="0.28" stroke-linecap="round"/>
+                <path d="M 265 280 C 330 275, 395 260, 445 225 C 485 198, 515 180, 540 165" fill="none" stroke="#facc15" stroke-width="4" filter="url(#glow-amber)" stroke-linecap="round"/>
+                <path d="M 265 280 C 330 275, 395 260, 445 225 C 485 198, 515 180, 540 165" fill="none" stroke="#fef08a" stroke-width="2" class="animated-route" stroke-linecap="round"/>
+
+                <!-- ROTA 3: LINHA 1 - AZUL (Estação da Luz -> Portuguesa-Tietê) -->
+                <path d="M 540 165 C 555 135, 570 105, 585 75" fill="none" stroke="#3b82f6" stroke-width="10" stroke-opacity="0.32" stroke-linecap="round"/>
+                <path d="M 540 165 C 555 135, 570 105, 585 75" fill="none" stroke="#3b82f6" stroke-width="4" filter="url(#glow-blue)" stroke-linecap="round"/>
+                <path d="M 540 165 C 555 135, 570 105, 585 75" fill="none" stroke="#bfdbfe" stroke-width="2" class="animated-route" stroke-linecap="round"/>
+
+                <!-- NÓ 1: ESTAÇÃO MORUMBI -->
+                <g transform="translate(175, 420)">
+                    <circle r="22" fill="none" stroke="#10b981" stroke-width="2" class="pulse-ring"/>
+                    <circle r="9" fill="#060a14" stroke="#10b981" stroke-width="3.5"/>
+                    <circle r="3.5" fill="#34d399"/>
+                    <g transform="translate(16, -12)">
+                        <rect x="0" y="0" width="185" height="36" rx="18" fill="#0a1222" stroke="#10b981" stroke-width="1.5"/>
+                        <circle cx="18" cy="18" r="7" fill="#10b981"/>
+                        <text x="18" y="21" text-anchor="middle" fill="#04100a" font-size="9" font-weight="900">9</text>
+                        <text x="32" y="16" fill="#ffffff" font-size="11" font-weight="800">Estação Morumbi</text>
+                        <text x="32" y="28" fill="#6ee7b7" font-size="9" font-family="JetBrains Mono">PARTIDA • PONTE ESTAIADA</text>
+                    </g>
+                </g>
+
+                <!-- NÓ 2: PINHEIROS / AV. PAULISTA -->
+                <g transform="translate(265, 280)">
+                    <circle r="8" fill="#060a14" stroke="#facc15" stroke-width="3"/>
+                    <circle r="3" fill="#fef08a"/>
+                    <g transform="translate(-185, -36)">
+                        <rect x="0" y="0" width="172" height="34" rx="17" fill="#0a1222" stroke="#facc15" stroke-width="1.5"/>
+                        <circle cx="17" cy="17" r="7" fill="#facc15"/>
+                        <text x="17" y="20" text-anchor="middle" fill="#1c1400" font-size="9" font-weight="900">4</text>
+                        <text x="30" y="15" fill="#ffffff" font-size="10.5" font-weight="800">Pinheiros / Paulista</text>
+                        <text x="30" y="26" fill="#fde047" font-size="8.5" font-family="JetBrains Mono">LINHA 4-AMARELA</text>
+                    </g>
+                </g>
+
+                <!-- NÓ 3: ESTAÇÃO DA LUZ -->
+                <g transform="translate(540, 165)">
+                    <circle r="8" fill="#060a14" stroke="#38bdf8" stroke-width="3"/>
+                    <circle r="3" fill="#bae6fd"/>
+                    <g transform="translate(14, -14)">
+                        <rect x="0" y="0" width="165" height="34" rx="17" fill="#0a1222" stroke="#38bdf8" stroke-width="1.5"/>
+                        <circle cx="17" cy="17" r="7" fill="#38bdf8"/>
+                        <text x="17" y="20" text-anchor="middle" fill="#04121c" font-size="9" font-weight="900">1</text>
+                        <text x="30" y="15" fill="#ffffff" font-size="10.5" font-weight="800">Estação da Luz</text>
+                        <text x="30" y="26" fill="#7dd3fc" font-size="8.5" font-family="JetBrains Mono">BALDEAÇÃO CENTRO</text>
+                    </g>
+                </g>
+
+                <!-- NÓ 4: RODOVIÁRIA DO TIETÊ -->
+                <g transform="translate(585, 75)">
+                    <circle r="24" fill="none" stroke="#3b82f6" stroke-width="2" class="pulse-ring"/>
+                    <circle r="10" fill="#060a14" stroke="#60a5fa" stroke-width="3.5"/>
+                    <circle r="4" fill="#ef4444"/>
+                    <g transform="translate(-235, -18)">
+                        <rect x="0" y="0" width="220" height="38" rx="19" fill="#0a1222" stroke="#60a5fa" stroke-width="1.8"/>
+                        <circle cx="19" cy="19" r="8" fill="#3b82f6"/>
+                        <text x="19" y="22" text-anchor="middle" fill="#ffffff" font-size="9" font-weight="900">1</text>
+                        <text x="34" y="17" fill="#ffffff" font-size="11" font-weight="800">Rodoviária do Tietê</text>
+                        <text x="34" y="29" fill="#93c5fd" font-size="9" font-family="JetBrains Mono">TERMINAL PORTUGUESA-TIETÊ</text>
+                    </g>
+                </g>
+            </svg>
+
+            <!-- Legenda flutuante no canto do mapa -->
+            <div class="absolute bottom-3 left-3 glass-panel px-3 py-2 rounded-2xl text-[11px] flex flex-wrap gap-3">
+                <span class="flex items-center gap-1.5 font-semibold text-emerald-300"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>L9 Esmeralda</span>
+                <span class="flex items-center gap-1.5 font-semibold text-yellow-300"><span class="w-2.5 h-2.5 rounded-full bg-yellow-400"></span>L4 Amarela</span>
+                <span class="flex items-center gap-1.5 font-semibold text-blue-300"><span class="w-2.5 h-2.5 rounded-full bg-blue-400"></span>L1 Azul</span>
+            </div>
+        </div>
+
+        <!-- Painel Inferior de Ação e Controles -->
+        <div class="glass-panel rounded-3xl p-4 sm:p-5 flex flex-col gap-3.5 z-10 shadow-2xl">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="w-3 h-3 rounded-sm bg-amber-400 rotate-45 inline-block"></span>
+                        <h1 class="text-xl sm:text-2xl font-black tracking-tight text-white">METRÔ NEON <span class="text-amber-400">SP</span></h1>
+                    </div>
+                    <p class="text-xs sm:text-sm text-slate-400 mt-0.5">Morumbi → Pinheiros/Paulista → Luz → Rodoviária do Tietê</p>
+                </div>
+
+                <!-- Seletor de Modo -->
+                <div class="flex bg-slate-900/90 p-1 rounded-2xl border border-slate-700/70 self-start sm:self-auto">
+                    <button id="mode-race" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500 text-slate-950 transition">
+                        Corrida Tietê
+                    </button>
+                    <button id="mode-endless" class="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-300 hover:text-white transition">
+                        Infinito
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <!-- Dicas rápidas de gesto mobile -->
+                <div class="flex items-center justify-around sm:justify-start gap-2 sm:gap-4 text-[11px] text-slate-300 bg-slate-900/60 px-3 py-2 rounded-2xl border border-slate-800">
+                    <span class="flex items-center gap-1"><kbd class="px-1.5 py-0.5 bg-slate-800 rounded text-amber-300 font-mono-tech">◄ ►</kbd> Faixas</span>
+                    <span class="flex items-center gap-1"><kbd class="px-1.5 py-0.5 bg-slate-800 rounded text-emerald-300 font-mono-tech">▲</kbd> Pular / Trilho</span>
+                    <span class="flex items-center gap-1"><kbd class="px-1.5 py-0.5 bg-slate-800 rounded text-sky-300 font-mono-tech">▼</kbd> Deslizar</span>
+                </div>
+
+                <!-- Botão JOGAR -->
+                <button id="btn-play" class="py-3.5 px-8 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-black text-base sm:text-lg tracking-wide flex items-center justify-center gap-2.5 neon-glow-amber active:scale-95 transition cursor-pointer">
+                    <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                    <span>JOGAR AGORA</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- HUD DURANTE A PARTIDA (ESTILO NEON SCRAMBLE)-->
+    <!-- ========================================== -->
+    <div id="hud-screen" class="fixed inset-0 z-20 pointer-events-none hidden flex-col justify-between p-3 sm:p-5">
+        
+        <!-- Barra Superior de Telemetria -->
+        <div class="flex items-start justify-between gap-2">
+            <!-- Placar Principal -->
+            <div class="glass-panel rounded-2xl px-3.5 py-2 sm:px-5 sm:py-2.5 flex items-center gap-3 sm:gap-6 shadow-lg">
+                <div class="hidden sm:flex items-center gap-2 pr-2 border-r border-slate-700/80">
+                    <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+                    <span class="font-black text-xs tracking-wider text-slate-200">METRÔ SP</span>
+                </div>
+                <div>
+                    <div class="text-[9px] sm:text-[10px] font-mono-tech text-slate-400 uppercase tracking-wider">Pontos</div>
+                    <div id="hud-score" class="text-base sm:text-xl font-black font-mono-tech text-white leading-tight">0</div>
+                </div>
+                <div>
+                    <div class="text-[9px] sm:text-[10px] font-mono-tech text-slate-400 uppercase tracking-wider">Velocidade</div>
+                    <div id="hud-speed" class="text-base sm:text-xl font-black font-mono-tech text-cyan-300 leading-tight">90 <span class="text-xs font-normal">km/h</span></div>
+                </div>
+                <div>
+                    <div class="text-[9px] sm:text-[10px] font-mono-tech text-slate-400 uppercase tracking-wider">Combo</div>
+                    <div id="hud-combo" class="text-base sm:text-xl font-black font-mono-tech text-amber-400 leading-tight">1x</div>
+                </div>
+                <div class="pl-2 border-l border-slate-700/80">
+                    <div class="text-[9px] sm:text-[10px] font-mono-tech text-slate-400 uppercase tracking-wider">Status</div>
+                    <div id="hud-state" class="text-xs sm:text-sm font-extrabold font-mono-tech text-emerald-400 leading-tight">CORRENDO</div>
+                </div>
+            </div>
+
+            <!-- Botões de Utilidade (Som / Pausa) -->
+            <div class="flex items-center gap-2 pointer-events-auto">
+                <button id="btn-audio-hud" class="glass-panel p-2.5 rounded-xl text-slate-200 active:scale-90 transition">
+                    <svg id="icon-sound-on-2" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path></svg>
+                    <svg id="icon-sound-off-2" class="w-5 h-5 hidden text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"></path></svg>
+                </button>
+                <button id="btn-home-hud" class="glass-panel p-2.5 rounded-xl text-slate-200 active:scale-90 transition" title="Voltar ao Mapa">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Banner Central de Manobra / Pontos de Estilo -->
+        <div id="trick-toast-container" class="relative w-full h-12 flex items-center justify-center"></div>
+
+        <!-- Área Inferior: Controles Mobile para Polegares + Minimapa SP -->
+        <div class="flex items-end justify-between gap-2 w-full">
+            
+            <!-- Botões Virtuais Esquerdos (Mover Faixas) -->
+            <div class="flex gap-2 pointer-events-auto pb-1">
+                <button id="ctrl-left" class="touch-btn glass-panel w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center text-white border-slate-600/60 shadow-lg" aria-label="Esquerda">
+                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"/></svg>
+                </button>
+                <button id="ctrl-right" class="touch-btn glass-panel w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center text-white border-slate-600/60 shadow-lg" aria-label="Direita">
+                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+                </button>
+            </div>
+
+            <!-- Minimapa em Tempo Real (Canto Inferior Direito/Centro) -->
+            <div class="glass-panel rounded-2xl p-2.5 sm:p-3 w-44 sm:w-60 shadow-xl border border-slate-700/80">
+                <div class="flex items-center justify-between gap-1.5 mb-1.5">
+                    <span id="minimap-line-badge" class="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-emerald-500 text-slate-950">LINHA 9</span>
+                    <span id="minimap-station-name" class="text-[10px] sm:text-xs font-bold text-white truncate">Estação Morumbi</span>
+                </div>
+                
+                <!-- Trilho Visual de Progresso Morumbi -> Pinheiros -> Luz -> Tietê -->
+                <div class="relative w-full h-7 flex items-center">
+                    <svg class="w-full h-full overflow-visible" viewBox="0 0 200 28">
+                        <!-- Segmento 1: Morumbi -> Pinheiros (Esmeralda) -->
+                        <line x1="12" y1="14" x2="72" y2="14" stroke="#10b981" stroke-width="4" stroke-linecap="round"/>
+                        <!-- Segmento 2: Pinheiros -> Luz (Amarela) -->
+                        <line x1="72" y1="14" x2="136" y2="14" stroke="#facc15" stroke-width="4" stroke-linecap="round"/>
+                        <!-- Segmento 3: Luz -> Tietê (Azul) -->
+                        <line x1="136" y1="14" x2="188" y2="14" stroke="#3b82f6" stroke-width="4" stroke-linecap="round"/>
+
+                        <!-- Pontos das Estações -->
+                        <circle cx="12" cy="14" r="4" fill="#060a14" stroke="#10b981" stroke-width="2.5"/>
+                        <circle cx="72" cy="14" r="4" fill="#060a14" stroke="#facc15" stroke-width="2.5"/>
+                        <circle cx="136" cy="14" r="4" fill="#060a14" stroke="#3b82f6" stroke-width="2.5"/>
+                        <circle cx="188" cy="14" r="5" fill="#060a14" stroke="#60a5fa" stroke-width="2.5"/>
+
+                        <!-- Marcador do Jogador -->
+                        <g id="minimap-player-dot" transform="translate(12, 14)">
+                            <circle r="7" fill="#fbbf24" fill-opacity="0.35"/>
+                            <circle r="4" fill="#fbbf24" stroke="#ffffff" stroke-width="1.5"/>
+                        </g>
+                    </svg>
+                </div>
+                <div class="flex justify-between text-[8px] font-mono-tech text-slate-400 mt-0.5">
+                    <span>MORUMBI</span>
+                    <span>LUZ</span>
+                    <span>TIETÊ</span>
+                </div>
+            </div>
+
+            <!-- Botões Virtuais Direitos (Pular e Deslizar) -->
+            <div class="flex flex-col gap-2 pointer-events-auto pb-1">
+                <button id="ctrl-up" class="touch-btn glass-panel w-14 h-12 sm:w-16 sm:h-14 rounded-2xl flex items-center justify-center text-emerald-300 border-emerald-500/40 shadow-lg" aria-label="Pular">
+                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"/></svg>
+                </button>
+                <button id="ctrl-down" class="touch-btn glass-panel w-14 h-12 sm:w-16 sm:h-14 rounded-2xl flex items-center justify-center text-sky-300 border-sky-500/40 shadow-lg" aria-label="Deslizar">
+                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- TELA FINAL (CHEGADA NO TIETÊ / GAME OVER)  -->
+    <!-- ========================================== -->
+    <div id="end-screen" class="fixed inset-0 z-40 hidden items-center justify-center p-4 bg-[#050811]/85 backdrop-blur-md">
+        <div class="glass-panel w-full max-w-md rounded-3xl p-6 border border-slate-700/80 shadow-2xl text-center">
+            <div id="end-badge" class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-400/40 mb-3">
+                TERMINAL PORTUGUESA-TIETÊ
+            </div>
+            <h2 id="end-title" class="text-2xl sm:text-3xl font-black text-white tracking-tight">CHEGADA NO TIETÊ!</h2>
+            <p id="end-subtitle" class="text-xs sm:text-sm text-slate-300 mt-1">Você cruzou São Paulo do Morumbi até a Rodoviária!</p>
+
+            <!-- Placar Final -->
+            <div class="grid grid-cols-3 gap-2.5 my-5">
+                <div class="bg-slate-900/80 p-3 rounded-2xl border border-slate-800">
+                    <div class="text-[10px] font-mono-tech text-slate-400">PONTUAÇÃO</div>
+                    <div id="final-score" class="text-lg sm:text-xl font-black font-mono-tech text-amber-400 mt-0.5">0</div>
+                </div>
+                <div class="bg-slate-900/80 p-3 rounded-2xl border border-slate-800">
+                    <div class="text-[10px] font-mono-tech text-slate-400">VEL. MÁXIMA</div>
+                    <div id="final-max-speed" class="text-lg sm:text-xl font-black font-mono-tech text-cyan-300 mt-0.5">0 km/h</div>
+                </div>
+                <div class="bg-slate-900/80 p-3 rounded-2xl border border-slate-800">
+                    <div class="text-[10px] font-mono-tech text-slate-400">TEMPO</div>
+                    <div id="final-time" class="text-lg sm:text-xl font-black font-mono-tech text-emerald-300 mt-0.5">00:00</div>
+                </div>
+            </div>
+
+            <!-- Estações Alcançadas -->
+            <div class="flex items-center justify-between px-3 py-2.5 rounded-2xl bg-slate-900/60 border border-slate-800 mb-5 text-[11px] font-mono-tech">
+                <span class="text-emerald-400 font-bold">● Morumbi</span>
+                <span class="text-slate-600">➔</span>
+                <span id="prog-pinheiros" class="text-yellow-400 font-bold">● Paulista</span>
+                <span class="text-slate-600">➔</span>
+                <span id="prog-luz" class="text-sky-400 font-bold">● Luz</span>
+                <span class="text-slate-600">➔</span>
+                <span id="prog-tiete" class="text-blue-400 font-bold">● Tietê</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-2.5">
+                <button id="btn-restart" class="flex-1 py-3.5 px-5 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 font-black text-sm tracking-wide hover:brightness-110 active:scale-95 transition cursor-pointer">
+                    JOGAR NOVAMENTE
+                </button>
+                <button id="btn-back-map" class="py-3.5 px-5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm transition cursor-pointer">
+                    MAPA SP
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * ============================================================================
+         * SINTETIZADOR DE ÁUDIO WEB AUDIO API (SFX & SYNTHWAVE LEVE)
+         * ============================================================================
+         */
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+                this.bgmTimer = null;
+                this.step = 0;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) this.ctx = new AudioCtx();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+                const iconsOn = [document.getElementById('icon-sound-on-1'), document.getElementById('icon-sound-on-2')];
+                const iconsOff = [document.getElementById('icon-sound-off-1'), document.getElementById('icon-sound-off-2')];
+                iconsOn.forEach(el => el && el.classList.toggle('hidden', this.muted));
+                iconsOff.forEach(el => el && el.classList.toggle('hidden', !this.muted));
+                if (this.muted) this.stopMusic();
+                else if (gameState.isPlaying) this.startMusic();
+            }
+
+            playTone(freq, type, duration, vol = 0.12, slideTo = null) {
+                if (this.muted || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, now);
+                    if (slideTo) {
+                        osc.frequency.exponentialRampToValueAtTime(slideTo, now + duration);
+                    }
+                    gain.gain.setValueAtTime(vol, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + duration);
+                } catch (e) {}
+            }
+
+            playLane() { this.playTone(320, 'triangle', 0.08, 0.09, 480); }
+            playJump() { this.playTone(240, 'sine', 0.18, 0.14, 620); }
+            playSlide() { this.playTone(220, 'sawtooth', 0.16, 0.08, 95); }
+            playGrind() { this.playTone(580, 'square', 0.12, 0.06, 660); }
+            playNearMiss() { this.playTone(520, 'triangle', 0.14, 0.11, 880); }
+            playCrash() { this.playTone(130, 'sawtooth', 0.45, 0.22, 38); }
+            playBoost() {
+                this.playTone(440, 'sine', 0.25, 0.14, 880);
+                setTimeout(() => this.playTone(660, 'triangle', 0.28, 0.12, 1180), 60);
+            }
+            playVictory() {
+                const notes = [523.25, 659.25, 783.99, 1046.50];
+                notes.forEach((n, idx) => {
+                    setTimeout(() => this.playTone(n, 'triangle', 0.35, 0.15), idx * 110);
+                });
+            }
+
+            startMusic() {
+                if (this.muted || !this.ctx || this.bgmTimer) return;
+                const bassLine = [110, 110, 130.81, 146.83, 110, 110, 164.81, 146.83];
+                this.bgmTimer = setInterval(() => {
+                    if (this.muted || !gameState.isPlaying) return;
+                    const freq = bassLine[this.step % bassLine.length];
+                    this.playTone(freq, 'triangle', 0.16, 0.045);
+                    if (this.step % 4 === 2) {
+                        this.playTone(freq * 3, 'sine', 0.08, 0.025);
+                    }
+                    this.step++;
+                }, 190);
+            }
+
+            stopMusic() {
+                if (this.bgmTimer) {
+                    clearInterval(this.bgmTimer);
+                    this.bgmTimer = null;
+                }
+            }
+        }
+
+        const sfx = new SoundEngine();
+
+        /**
+         * ============================================================================
+         * CONFIGURAÇÃO DAS ESTAÇÕES E LINHAS DE SÃO PAULO
+         * ============================================================================
+         */
+        const STATIONS = [
+            {
+                id: 'morumbi',
+                name: 'Estação Morumbi',
+                line: 'LINHA 9',
+                badgeBg: '#10b981',
+                fogColor: 0x071318,
+                accentHex: 0x10b981,
+                startDist: 0,
+                endDist: 900
+            },
+            {
+                id: 'pinheiros',
+                name: 'Pinheiros / Av. Paulista',
+                line: 'LINHA 4',
+                badgeBg: '#facc15',
+                fogColor: 0x12100a,
+                accentHex: 0xfacc15,
+                startDist: 900,
+                endDist: 1900
+            },
+            {
+                id: 'luz',
+                name: 'Estação da Luz',
+                line: 'LINHA 1',
+                badgeBg: '#38bdf8',
+                fogColor: 0x08101e,
+                accentHex: 0x38bdf8,
+                startDist: 1900,
+                endDist: 2800
+            },
+            {
+                id: 'tiete',
+                name: 'Rodoviária do Tietê',
+                line: 'TIETÊ L1',
+                badgeBg: '#3b82f6',
+                fogColor: 0x070d1c,
+                accentHex: 0x3b82f6,
+                startDist: 2800,
+                endDist: 3200
+            }
+        ];
+
+        const TOTAL_RACE_DISTANCE = 3200;
+        const LANE_WIDTH = 2.6;
+        const LANES = [-LANE_WIDTH, 0, LANE_WIDTH];
+
+        /**
+         * ============================================================================
+         * ESTADO GLOBAL DO JOGO
+         * ============================================================================
+         */
+        const gameState = {
+            mode: 'race', // 'race' ou 'endless'
+            isPlaying: false,
+            isFinished: false,
+            score: 0,
+            combo: 1,
+            comboTimer: 0,
+            distance: 0,
+            baseSpeed: 28,
+            currentSpeed: 28,
+            maxSpeedRecorded: 95,
+            boostTimer: 0,
+            startTime: 0,
+            elapsedTime: 0,
+            currentStationIndex: 0,
+            // Jogador
+            lane: 1, // 0 = Esquerda, 1 = Centro, 2 = Direita
+            targetX: 0,
+            playerY: 0,
+            velY: 0,
+            isJumping: false,
+            isSliding: false,
+            slideTimer: 0,
+            isGrinding: false,
+            isWallRunning: false,
+            wallSide: 0,
+            runCycle: 0
+        };
+
+        /**
+         * ============================================================================
+         * INICIALIZAÇÃO THREE.JS (CENA, CÂMERA, LUZES, TEXTURAS PROCEDURAIS)
+         * ============================================================================
+         */
+        const canvas = document.getElementById('game-canvas');
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.15;
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x060a14);
+        scene.fog = new THREE.FogExp2(0x071318, 0.0115);
+
+        const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 220);
+        camera.position.set(0, 5.2, 9.5);
+
+        // Iluminação urbana noturna
+        const hemiLight = new THREE.HemisphereLight(0x93c5fd, 0x0f172a, 0.85);
+        scene.add(hemiLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.1);
+        dirLight.position.set(15, 30, 20);
+        scene.add(dirLight);
+
+        const playerGlowLight = new THREE.PointLight(0xfbbf24, 1.6, 12);
+        playerGlowLight.position.set(0, 2, 0);
+        scene.add(playerGlowLight);
+
+        // Gerador de texturas de letreiros neon brasileiros
+        function createNeonSignTexture(text, borderColor = '#10b981', textColor = '#ffffff', bg = '#08101e') {
+            const c = document.createElement('canvas');
+            c.width = 512;
+            c.height = 160;
+            const ctx = c.getContext('2d');
+
+            ctx.fillStyle = bg;
+            ctx.fillRect(0, 0, c.width, c.height);
+
+            ctx.strokeStyle = borderColor;
+            ctx.lineWidth = 10;
+            ctx.strokeRect(10, 10, c.width - 20, c.height - 20);
+
+            ctx.shadowColor = borderColor;
+            ctx.shadowBlur = 18;
+            ctx.fillStyle = textColor;
+            ctx.font = '900 46px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, c.width / 2, c.height / 2);
+
+            const tex = new THREE.CanvasTexture(c);
+            tex.needsUpdate = true;
+            return tex;
+        }
+
+        // Textura das janelas dos prédios de São Paulo
+        function createBuildingTexture() {
+            const c = document.createElement('canvas');
+            c.width = 128;
+            c.height = 256;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#090e1a';
+            ctx.fillRect(0, 0, 128, 256);
+
+            const colors = ['#38bdf8', '#fbbf24', '#e2e8f0', '#34d399', '#1e293b'];
+            for (let y = 10; y < 246; y += 16) {
+                for (let x = 10; x < 118; x += 18) {
+                    if (Math.random() > 0.35) {
+                        ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+                        ctx.globalAlpha = Math.random() * 0.7 + 0.2;
+                        ctx.fillRect(x, y, 10, 9);
+                    }
+                }
+            }
+            const tex = new THREE.CanvasTexture(c);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            return tex;
+        }
+
+        const buildingTex = createBuildingTexture();
+
+        const SP_SIGNS = [
+            { text: 'METRÔ SP', color: '#3b82f6' },
+            { text: 'AV. PAULISTA', color: '#facc15' },
+            { text: 'ESTAÇÃO DA LUZ', color: '#38bdf8' },
+            { text: 'MORUMBI • L9', color: '#10b981' },
+            { text: 'RODOVIÁRIA TIETÊ', color: '#60a5fa' },
+            { text: 'PÃO DE AÇÚCAR', color: '#34d399' },
+            { text: 'CAFÉ EXPRESSO', color: '#f59e0b' },
+            { text: 'PINHEIROS', color: '#facc15' }
+        ].map(s => createNeonSignTexture(s.text, s.color));
+
+        /**
+         * ============================================================================
+         * CONSTRUÇÃO DO CORREDOR ESTILIZADO AMARELO + RASTRO NEON
+         * ============================================================================
+         */
+        const playerGroup = new THREE.Group();
+        scene.add(playerGroup);
+
+        const bodyMat = new THREE.MeshStandardMaterial({
+            color: 0xfacc15,
+            emissive: 0xf59e0b,
+            emissiveIntensity: 0.55,
+            roughness: 0.25,
+            metalness: 0.1
+        });
+
+        // Tronco
+        const torsoMesh = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.85, 0.38), bodyMat);
+        torsoMesh.position.y = 1.15;
+        playerGroup.add(torsoMesh);
+
+        // Cabeça
+        const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 16), bodyMat);
+        headMesh.position.y = 1.82;
+        playerGroup.add(headMesh);
+
+        // Visor cyberpunk
+        const visorMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(0.46, 0.14, 0.2),
+            new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
+        );
+        visorMesh.position.set(0, 1.84, -0.22);
+        playerGroup.add(visorMesh);
+
+        // Braços e Pernas articulados
+        const limbGeo = new THREE.BoxGeometry(0.22, 0.68, 0.22);
+        const leftArm = new THREE.Mesh(limbGeo, bodyMat);
+        leftArm.position.set(-0.5, 1.18, 0);
+        playerGroup.add(leftArm);
+
+        const rightArm = new THREE.Mesh(limbGeo, bodyMat);
+        rightArm.position.set(0.5, 1.18, 0);
+        playerGroup.add(rightArm);
+
+        const leftLeg = new THREE.Mesh(limbGeo, bodyMat);
+        leftLeg.position.set(-0.2, 0.42, 0);
+        playerGroup.add(leftLeg);
+
+        const rightLeg = new THREE.Mesh(limbGeo, bodyMat);
+        rightLeg.position.set(0.2, 0.42, 0);
+        playerGroup.add(rightLeg);
+
+        // Rastro de Luz Neon (Ribbon Trail)
+        const TRAIL_POINTS = 26;
+        const trailPositions = new Float32Array(TRAIL_POINTS * 3);
+        const trailGeo = new THREE.BufferGeometry();
+        trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+        const trailMat = new THREE.LineBasicMaterial({ color: 0xfde047, transparent: true, opacity: 0.85 });
+        const trailLine = new THREE.Line(trailGeo, trailMat);
+        trailLine.frustumCulled = false;
+        scene.add(trailLine);
+
+        // Fita luminosa mais espessa abaixo do jogador
+        const ribbonGeo = new THREE.PlaneGeometry(0.45, 7);
+        ribbonGeo.rotateX(-Math.PI / 2);
+        const ribbonMat = new THREE.MeshBasicMaterial({
+            color: 0xf59e0b,
+            transparent: true,
+            opacity: 0.45,
+            side: THREE.DoubleSide
+        });
+        const ribbonMesh = new THREE.Mesh(ribbonGeo, ribbonMat);
+        ribbonMesh.position.set(0, 0.08, 3.6);
+        playerGroup.add(ribbonMesh);
+
+        function resetTrail() {
+            for (let i = 0; i < TRAIL_POINTS; i++) {
+                trailPositions[i * 3] = playerGroup.position.x;
+                trailPositions[i * 3 + 1] = playerGroup.position.y + 0.9;
+                trailPositions[i * 3 + 2] = playerGroup.position.z + i * 0.25;
+            }
+            trailGeo.attributes.position.needsUpdate = true;
+        }
+
+        /**
+         * ============================================================================
+         * PISTA, PONTE ESTAIADA, TRILHOS DE GRIND, OBSTÁCULOS E CHEGADA TIETÊ
+         * ============================================================================
+         */
+        const worldGroup = new THREE.Group();
+        scene.add(worldGroup);
+
+        // Chão da Avenida Paulista / Marginal (3 faixas)
+        const roadWidth = LANE_WIDTH * 3 + 2.2;
+        const roadGeo = new THREE.PlaneGeometry(roadWidth, 320);
+        roadGeo.rotateX(-Math.PI / 2);
+        const roadMat = new THREE.MeshStandardMaterial({
+            color: 0x0b1120,
+            roughness: 0.45,
+            metalness: 0.35
+        });
+        const roadMesh = new THREE.Mesh(roadGeo, roadMat);
+        roadMesh.position.z = -120;
+        worldGroup.add(roadMesh);
+
+        // Linhas divisórias neon das faixas
+        const laneLines = [];
+        [-LANE_WIDTH / 2, LANE_WIDTH / 2].forEach(lx => {
+            const lineGeo = new THREE.PlaneGeometry(0.12, 320);
+            lineGeo.rotateX(-Math.PI / 2);
+            const lineMat = new THREE.MeshBasicMaterial({ color: 0x334155 });
+            const m = new THREE.Mesh(lineGeo, lineMat);
+            m.position.set(lx, 0.02, -120);
+            worldGroup.add(m);
+            laneLines.push(m);
+        });
+
+        // Paredes laterais de metrô para WALL RUN
+        const wallGeo = new THREE.BoxGeometry(0.6, 4.2, 320);
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.6 });
+        const leftWall = new THREE.Mesh(wallGeo, wallMat);
+        leftWall.position.set(-roadWidth / 2 - 0.3, 2.1, -120);
+        worldGroup.add(leftWall);
+
+        const rightWall = new THREE.Mesh(wallGeo, wallMat);
+        rightWall.position.set(roadWidth / 2 + 0.3, 2.1, -120);
+        worldGroup.add(rightWall);
+
+        // Faixa neon superior nas paredes
+        const wallNeonMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+        const leftNeonStrip = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.18, 320), wallNeonMat);
+        leftNeonStrip.position.set(-roadWidth / 2 + 0.02, 2.8, -120);
+        worldGroup.add(leftNeonStrip);
+
+        const rightNeonStrip = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.18, 320), wallNeonMat);
+        rightNeonStrip.position.set(roadWidth / 2 - 0.02, 2.8, -120);
+        worldGroup.add(rightNeonStrip);
+
+        // Ponte Estaiada Octávio Frias de Oliveira (Marco do Morumbi)
+        const estaiadaGroup = new THREE.Group();
+        const towerMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, emissive: 0x10b981, emissiveIntensity: 0.35 });
+        const leg1 = new THREE.Mesh(new THREE.BoxGeometry(0.9, 26, 1.2), towerMat);
+        leg1.position.set(-4.2, 12, 0);
+        leg1.rotation.z = -0.22;
+        const leg2 = new THREE.Mesh(new THREE.BoxGeometry(0.9, 26, 1.2), towerMat);
+        leg2.position.set(4.2, 12, 0);
+        leg2.rotation.z = 0.22;
+        const topCross = new THREE.Mesh(new THREE.BoxGeometry(5.5, 1.2, 1.4), towerMat);
+        topCross.position.set(0, 22, 0);
+        estaiadaGroup.add(leg1, leg2, topCross);
+
+        // Cabos estaiados iluminados em dourado/esmeralda
+        const cableMat = new THREE.LineBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.75 });
+        for (let i = -3; i <= 3; i++) {
+            if (i === 0) continue;
+            const pts = [
+                new THREE.Vector3(0, 21.5, 0),
+                new THREE.Vector3(i * 1.4, 0.2, i * 4.5)
+            ];
+            const cGeo = new THREE.BufferGeometry().setFromPoints(pts);
+            estaiadaGroup.add(new THREE.Line(cGeo, cableMat));
+        }
+        estaiadaGroup.position.set(0, 0, -45);
+        scene.add(estaiadaGroup);
+
+        // Prédios da paisagem urbana
+        const cityBuildings = [];
+        const bldgMat = new THREE.MeshStandardMaterial({
+            map: buildingTex,
+            roughness: 0.5,
+            metalness: 0.2
+        });
+
+        for (let i = 0; i < 36; i++) {
+            const side = i % 2 === 0 ? -1 : 1;
+            const w = 5 + Math.random() * 5;
+            const h = 14 + Math.random() * 28;
+            const d = 6 + Math.random() * 6;
+            const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), bldgMat);
+            const zPos = -i * 7.5 + 10;
+            mesh.position.set(side * (roadWidth / 2 + 4.5 + Math.random() * 4), h / 2, zPos);
+            scene.add(mesh);
+
+            // Letreiro neon SP em alguns prédios
+            if (i % 3 === 0) {
+                const signTex = SP_SIGNS[i % SP_SIGNS.length];
+                const signMesh = new THREE.Mesh(
+                    new THREE.PlaneGeometry(4.4, 1.4),
+                    new THREE.MeshBasicMaterial({ map: signTex })
+                );
+                signMesh.position.set(
+                    side * (roadWidth / 2 + 1.4),
+                    4.8 + (i % 3) * 1.8,
+                    zPos
+                );
+                signMesh.rotation.y = side === -1 ? Math.PI / 2.4 : -Math.PI / 2.4;
+                scene.add(signMesh);
+                cityBuildings.push({ mesh, signMesh });
+            } else {
+                cityBuildings.push({ mesh, signMesh: null });
+            }
+        }
+
+        // Portal da Linha de Chegada: RODOVIÁRIA DO TIETÊ
+        const finishArchGroup = new THREE.Group();
+        const pillarGeo = new THREE.BoxGeometry(1.1, 10, 1.1);
+        const pillarMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, emissive: 0x3b82f6, emissiveIntensity: 0.5 });
+        const pLeft = new THREE.Mesh(pillarGeo, pillarMat);
+        pLeft.position.set(-roadWidth / 2, 5, 0);
+        const pRight = new THREE.Mesh(pillarGeo, pillarMat);
+        pRight.position.set(roadWidth / 2, 5, 0);
+
+        const bannerTex = createNeonSignTexture('RODOVIÁRIA DO TIETÊ • L1', '#3b82f6', '#ffffff', '#061126');
+        const topBanner = new THREE.Mesh(
+            new THREE.BoxGeometry(roadWidth + 1.5, 2.4, 1.2),
+            new THREE.MeshBasicMaterial({ map: bannerTex })
+        );
+        topBanner.position.set(0, 8.8, 0);
+
+        const finishLineFloor = new THREE.Mesh(
+            new THREE.PlaneGeometry(roadWidth, 2.5),
+            new THREE.MeshBasicMaterial({ color: 0x3b82f6 })
+        );
+        finishLineFloor.rotation.x = -Math.PI / 2;
+        finishLineFloor.position.y = 0.05;
+
+        finishArchGroup.add(pLeft, pRight, topBanner, finishLineFloor);
+        finishArchGroup.visible = false;
+        scene.add(finishArchGroup);
+
+        /**
+         * ============================================================================
+         * POOL DE OBJETOS DINÂMICOS (CARROS, BARREIRAS, TRILHOS DE GRIND, BOOST RINGS)
+         * ============================================================================
+         */
+        let entities = [];
+
+        function clearEntities() {
+            entities.forEach(ent => scene.remove(ent.mesh));
+            entities = [];
+        }
+
+        // Cria um carro cyberpunk de São Paulo
+        function spawnCar(laneIdx, zPos) {
+            const group = new THREE.Group();
+            const colors = [0xef4444, 0x38bdf8, 0xfacc15, 0xa855f7, 0x10b981];
+            const accent = colors[Math.floor(Math.random() * colors.length)];
+
+            const chassis = new THREE.Mesh(
+                new THREE.BoxGeometry(1.65, 0.72, 3.6),
+                new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.25, metalness: 0.8 })
+            );
+            chassis.position.y = 0.52;
+            group.add(chassis);
+
+            const cabin = new THREE.Mesh(
+                new THREE.BoxGeometry(1.38, 0.52, 1.85),
+                new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.1 })
+            );
+            cabin.position.set(0, 1.08, 0.1);
+            group.add(cabin);
+
+            // Faixa neon lateral
+            const neonTrim = new THREE.Mesh(
+                new THREE.BoxGeometry(1.7, 0.08, 3.64),
+                new THREE.MeshBasicMaterial({ color: accent })
+            );
+            neonTrim.position.y = 0.52;
+            group.add(neonTrim);
+
+            // Lanternas traseiras vermelhas
+            const tailLight = new THREE.Mesh(
+                new THREE.BoxGeometry(1.4, 0.16, 0.1),
+                new THREE.MeshBasicMaterial({ color: 0xff2a55 })
+            );
+            tailLight.position.set(0, 0.58, 1.81);
+            group.add(tailLight);
+
+            group.position.set(LANES[laneIdx], 0, zPos);
+            scene.add(group);
+
+            entities.push({
+                type: 'car',
+                lane: laneIdx,
+                mesh: group,
+                speedOffset: 9 + Math.random() * 6,
+                nearMissed: false
+            });
+        }
+
+        // Cria barreira alta (passar por baixo com SLIDE) ou baixa (PULAR)
+        function spawnBarrier(laneIdx, zPos, high = false) {
+            const group = new THREE.Group();
+            const stripeMat = new THREE.MeshBasicMaterial({ color: high ? 0x38bdf8 : 0xf97316 });
+
+            if (high) {
+                // Pórtico elevado: precisa deslizar (SLIDE)
+                const postL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.8, 0.2), stripeMat);
+                postL.position.set(-0.95, 1.4, 0);
+                const postR = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.8, 0.2), stripeMat);
+                postR.position.set(0.95, 1.4, 0);
+                const bar = new THREE.Mesh(new THREE.BoxGeometry(2.1, 1.15, 0.35), stripeMat);
+                bar.position.set(0, 2.15, 0);
+                group.add(postL, postR, bar);
+            } else {
+                // Barreira de obras do metrô: precisa PULAR
+                const box = new THREE.Mesh(
+                    new THREE.BoxGeometry(1.9, 1.05, 0.45),
+                    new THREE.MeshStandardMaterial({ color: 0x1e293b, emissive: 0xf97316, emissiveIntensity: 0.4 })
+                );
+                box.position.y = 0.55;
+                const topGlow = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.16, 0.5), stripeMat);
+                topGlow.position.y = 1.08;
+                group.add(box, topGlow);
+            }
+
+            group.position.set(LANES[laneIdx], 0, zPos);
+            scene.add(group);
+            entities.push({
+                type: high ? 'high_barrier' : 'low_barrier',
+                lane: laneIdx,
+                mesh: group,
+                speedOffset: 0
+            });
+        }
+
+        // Cria Trilho Elevado de Metrô para RAIL GRIND
+        function spawnGrindRail(laneIdx, zPos, length = 18) {
+            const group = new THREE.Group();
+            const railMat = new THREE.MeshBasicMaterial({ color: 0x34d399 });
+            const beam = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.22, length), railMat);
+            beam.position.y = 1.45;
+            group.add(beam);
+
+            // Pilares de sustentação
+            for (let z = -length / 2 + 2; z <= length / 2 - 2; z += 5) {
+                const post = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.16, 1.45, 0.16),
+                    new THREE.MeshStandardMaterial({ color: 0x334155 })
+                );
+                post.position.set(0, 0.72, z);
+                group.add(post);
+            }
+
+            group.position.set(LANES[laneIdx], 0, zPos);
+            scene.add(group);
+            entities.push({
+                type: 'rail',
+                lane: laneIdx,
+                length,
+                mesh: group,
+                speedOffset: 0
+            });
+        }
+
+        // Cria Anel de Impulso (BOOST RING) estilo marcador de mapa do vídeo
+        function spawnBoostRing(laneIdx, zPos, elevated = false) {
+            const group = new THREE.Group();
+            const ringGeo = new THREE.TorusGeometry(1.25, 0.11, 10, 24);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+
+            const innerRing = new THREE.Mesh(
+                new THREE.TorusGeometry(0.95, 0.05, 8, 24),
+                new THREE.MeshBasicMaterial({ color: 0xfacc15 })
+            );
+            group.add(ring, innerRing);
+
+            group.position.set(LANES[laneIdx], elevated ? 2.5 : 1.35, zPos);
+            scene.add(group);
+            entities.push({
+                type: 'ring',
+                lane: laneIdx,
+                mesh: group,
+                collected: false,
+                speedOffset: 0
+            });
+        }
+
+        let nextSpawnZ = -45;
+        function generateTrackChunk() {
+            if (gameState.mode === 'race' && gameState.distance > TOTAL_RACE_DISTANCE - 140) return;
+
+            const lane1 = Math.floor(Math.random() * 3);
+            const lane2 = (lane1 + 1 + Math.floor(Math.random() * 2)) % 3;
+            const roll = Math.random();
+
+            if (roll < 0.30) {
+                // Trilho de Rail Grind + Boost Ring no final
+                const len = 18;
+                spawnGrindRail(lane1, nextSpawnZ - len / 2, len);
+                spawnBoostRing(lane1, nextSpawnZ - len - 2, true);
+                spawnCar(lane2, nextSpawnZ - 8);
+                nextSpawnZ -= 34;
+            } else if (roll < 0.62) {
+                // Trânsito da Marginal / Paulista
+                spawnCar(lane1, nextSpawnZ);
+                if (Math.random() > 0.35) spawnCar(lane2, nextSpawnZ - 7);
+                if (Math.random() > 0.5) spawnBoostRing(3 - lane1 - lane2, nextSpawnZ - 4, false);
+                nextSpawnZ -= 26;
+            } else if (roll < 0.85) {
+                // Barreiras de Pulo / Slide
+                spawnBarrier(lane1, nextSpawnZ, Math.random() > 0.45);
+                spawnBarrier(lane2, nextSpawnZ, Math.random() > 0.5);
+                nextSpawnZ -= 24;
+            } else {
+                // Anel de Boost livre
+                spawnBoostRing(lane1, nextSpawnZ, false);
+                spawnCar(lane2, nextSpawnZ - 6);
+                nextSpawnZ -= 22;
+            }
+        }
+
+        /**
+         * ============================================================================
+         * FEEDBACK VISUAL (TOASTS DE MANOBRA E FLASH)
+         * ============================================================================
+         */
+        const toastContainer = document.getElementById('trick-toast-container');
+        const flashEl = document.getElementById('screen-flash');
+
+        function triggerToast(label, points, colorClass = 'text-amber-300 border-amber-400/50') {
+            const el = document.createElement('div');
+            el.className = `toast-anim absolute left-1/2 glass-panel px-4 py-1.5 rounded-full border ${colorClass} font-mono-tech text-xs sm:text-sm font-black tracking-wide shadow-lg whitespace-nowrap`;
+            el.innerHTML = `✦ ${label} <span class="text-white ml-1.5">+${points.toLocaleString('pt-BR')}</span>`;
+            toastContainer.innerHTML = '';
+            toastContainer.appendChild(el);
+        }
+
+        function triggerFlash(color = 'rgba(56, 189, 248, 0.25)') {
+            flashEl.style.backgroundColor = color;
+            flashEl.style.opacity = '1';
+            setTimeout(() => { flashEl.style.opacity = '0'; }, 140);
+        }
+
+        function addStyleScore(label, basePts, colorClass) {
+            const earned = basePts * gameState.combo;
+            gameState.score += earned;
+            gameState.combo = Math.min(12, gameState.combo + 1);
+            gameState.comboTimer = 4.0;
+            triggerToast(label, earned, colorClass);
+        }
+
+        /**
+         * ============================================================================
+         * CONTROLES DO JOGADOR (SWIPE MOBILE, BOTÕES VIRTUAIS E TECLADO)
+         * ============================================================================
+         */
+        function moveLeft() {
+            if (!gameState.isPlaying) return;
+            if (gameState.lane > 0) {
+                gameState.lane--;
+                gameState.targetX = LANES[gameState.lane];
+                gameState.isWallRunning = false;
+                sfx.playLane();
+            } else if (!gameState.isWallRunning && gameState.playerY > 0.3) {
+                // Wall run na parede esquerda!
+                gameState.isWallRunning = true;
+                gameState.wallSide = -1;
+                gameState.velY = 2.5;
+                sfx.playGrind();
+                addStyleScore('WALL RUN SP', 800, 'text-emerald-300 border-emerald-400/50');
+            }
+        }
+
+        function moveRight() {
+            if (!gameState.isPlaying) return;
+            if (gameState.lane < 2) {
+                gameState.lane++;
+                gameState.targetX = LANES[gameState.lane];
+                gameState.isWallRunning = false;
+                sfx.playLane();
+            } else if (!gameState.isWallRunning && gameState.playerY > 0.3) {
+                // Wall run na parede direita!
+                gameState.isWallRunning = true;
+                gameState.wallSide = 1;
+                gameState.velY = 2.5;
+                sfx.playGrind();
+                addStyleScore('WALL RUN SP', 800, 'text-emerald-300 border-emerald-400/50');
+            }
+        }
+
+        function jump() {
+            if (!gameState.isPlaying) return;
+            if (!gameState.isJumping || gameState.isGrinding || gameState.isWallRunning) {
+                gameState.isJumping = true;
+                gameState.isGrinding = false;
+                gameState.isWallRunning = false;
+                gameState.isSliding = false;
+                gameState.velY = 14.5;
+                sfx.playJump();
+            }
+        }
+
+        function slide() {
+            if (!gameState.isPlaying) return;
+            if (gameState.isJumping) {
+                // Fast fall
+                gameState.velY = -22;
+            }
+            gameState.isSliding = true;
+            gameState.isGrinding = false;
+            gameState.isWallRunning = false;
+            gameState.slideTimer = 0.68;
+            sfx.playSlide();
+        }
+
+        // Gestos Touch (Swipe)
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchHandled = false;
+
+        window.addEventListener('touchstart', (e) => {
+            if (e.target.closest('button')) return;
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            touchHandled = false;
+        }, { passive: true });
+
+        window.addEventListener('touchmove', (e) => {
+            if (!gameState.isPlaying || touchHandled || e.target.closest('button')) return;
+            const dx = e.touches[0].clientX - touchStartX;
+            const dy = e.touches[0].clientY - touchStartY;
+            const threshold = 28;
+
+            if (Math.abs(dx) > threshold || Math.abs(dy) > threshold) {
+                touchHandled = true;
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    if (dx < 0) moveLeft();
+                    else moveRight();
+                } else {
+                    if (dy < 0) jump();
+                    else slide();
+                }
+            }
+        }, { passive: true });
+
+        // Botões Virtuais Mobile
+        document.getElementById('ctrl-left').addEventListener('pointerdown', (e) => { e.stopPropagation(); moveLeft(); });
+        document.getElementById('ctrl-right').addEventListener('pointerdown', (e) => { e.stopPropagation(); moveRight(); });
+        document.getElementById('ctrl-up').addEventListener('pointerdown', (e) => { e.stopPropagation(); jump(); });
+        document.getElementById('ctrl-down').addEventListener('pointerdown', (e) => { e.stopPropagation(); slide(); });
+
+        // Teclado (WASD / Setas)
+        window.addEventListener('keydown', (e) => {
+            if (!gameState.isPlaying) return;
+            switch (e.key) {
+                case 'ArrowLeft':
+                case 'a':
+                case 'A':
+                    moveLeft();
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                case 'D':
+                    moveRight();
+                    break;
+                case 'ArrowUp':
+                case 'w':
+                case 'W':
+                case ' ':
+                    jump();
+                    break;
+                case 'ArrowDown':
+                case 's':
+                case 'S':
+                    slide();
+                    break;
+            }
+        });
+
+        /**
+         * ============================================================================
+         * FLUXO DE INÍCIO, REINÍCIO E FINALIZAÇÃO
+         * ============================================================================
+         */
+        const startScreen = document.getElementById('start-screen');
+        const hudScreen = document.getElementById('hud-screen');
+        const endScreen = document.getElementById('end-screen');
+
+        function startGame() {
+            sfx.init();
+            sfx.startMusic();
+
+            // Reset do estado
+            gameState.isPlaying = true;
+            gameState.isFinished = false;
+            gameState.score = 0;
+            gameState.combo = 1;
+            gameState.comboTimer = 0;
+            gameState.distance = 0;
+            gameState.baseSpeed = 29;
+            gameState.currentSpeed = 29;
+            gameState.maxSpeedRecorded = 95;
+            gameState.boostTimer = 0;
+            gameState.startTime = performance.now();
+            gameState.currentStationIndex = 0;
+
+            gameState.lane = 1;
+            gameState.targetX = 0;
+            gameState.playerY = 0;
+            gameState.velY = 0;
+            gameState.isJumping = false;
+            gameState.isSliding = false;
+            gameState.isGrinding = false;
+            gameState.isWallRunning = false;
+
+            playerGroup.position.set(0, 0, 0);
+            playerGroup.rotation.set(0, 0, 0);
+            playerGroup.scale.set(1, 1, 1);
+            resetTrail();
+
+            clearEntities();
+            nextSpawnZ = -42;
+            for (let i = 0; i < 10; i++) generateTrackChunk();
+
+            estaiadaGroup.position.z = -45;
+            finishArchGroup.visible = false;
+
+            startScreen.classList.add('hidden');
+            endScreen.classList.add('hidden');
+            endScreen.classList.remove('flex');
+            hudScreen.classList.remove('hidden');
+            hudScreen.classList.add('flex');
+
+            updateStationTheme(0);
+            triggerToast('PARTIDA: ESTAÇÃO MORUMBI', 500, 'text-emerald-300 border-emerald-400/50');
+        }
+
+        function endGame(victory = false) {
+            gameState.isPlaying = false;
+            gameState.isFinished = true;
+            sfx.stopMusic();
+
+            if (victory) {
+                sfx.playVictory();
+                triggerFlash('rgba(59, 130, 246, 0.35)');
+                document.getElementById('end-badge').textContent = 'TERMINAL PORTUGUESA-TIETÊ';
+                document.getElementById('end-title').textContent = 'CHEGADA NO TIETÊ!';
+                document.getElementById('end-subtitle').textContent = 'Trajeto Morumbi → Pinheiros → Luz → Tietê concluído!';
+            } else {
+                sfx.playCrash();
+                triggerFlash('rgba(239, 68, 68, 0.45)');
+                document.getElementById('end-badge').textContent = `PARADA: ${STATIONS[gameState.currentStationIndex].name.toUpperCase()}`;
+                document.getElementById('end-title').textContent = 'COLISÃO NA VIA!';
+                document.getElementById('end-subtitle').textContent = 'Tente desviar do trânsito ou usar os trilhos elevados!';
+            }
+
+            const totalSec = Math.floor((performance.now() - gameState.startTime) / 1000);
+            const mins = String(Math.floor(totalSec / 60)).padStart(2, '0');
+            const secs = String(totalSec % 60).padStart(2, '0');
+
+            document.getElementById('final-score').textContent = Math.floor(gameState.score).toLocaleString('pt-BR');
+            document.getElementById('final-max-speed').textContent = `${Math.round(gameState.maxSpeedRecorded)} km/h`;
+            document.getElementById('final-time').textContent = `${mins}:${secs}`;
+
+            // Destacar estações alcançadas
+            const idx = victory ? 3 : gameState.currentStationIndex;
+            document.getElementById('prog-pinheiros').style.opacity = idx >= 1 ? '1' : '0.35';
+            document.getElementById('prog-luz').style.opacity = idx >= 2 ? '1' : '0.35';
+            document.getElementById('prog-tiete').style.opacity = idx >= 3 ? '1' : '0.35';
+
+            hudScreen.classList.add('hidden');
+            hudScreen.classList.remove('flex');
+            endScreen.classList.remove('hidden');
+            endScreen.classList.add('flex');
+        }
+
+        function returnToMap() {
+            gameState.isPlaying = false;
+            sfx.stopMusic();
+            hudScreen.classList.add('hidden');
+            hudScreen.classList.remove('flex');
+            endScreen.classList.add('hidden');
+            endScreen.classList.remove('flex');
+            startScreen.classList.remove('hidden');
+        }
+
+        // Eventos dos botões da UI
+        document.getElementById('btn-play').addEventListener('click', startGame);
+        document.getElementById('btn-restart').addEventListener('click', startGame);
+        document.getElementById('btn-back-map').addEventListener('click', returnToMap);
+        document.getElementById('btn-home-hud').addEventListener('click', returnToMap);
+        document.getElementById('btn-audio-start').addEventListener('click', () => { sfx.init(); sfx.toggleMute(); });
+        document.getElementById('btn-audio-hud').addEventListener('click', () => { sfx.init(); sfx.toggleMute(); });
+
+        const btnModeRace = document.getElementById('mode-race');
+        const btnModeEndless = document.getElementById('mode-endless');
+        btnModeRace.addEventListener('click', () => {
+            gameState.mode = 'race';
+            btnModeRace.className = 'px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500 text-slate-950 transition';
+            btnModeEndless.className = 'px-3 py-1.5 rounded-xl text-xs font-bold text-slate-300 hover:text-white transition';
+        });
+        btnModeEndless.addEventListener('click', () => {
+            gameState.mode = 'endless';
+            btnModeEndless.className = 'px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500 text-slate-950 transition';
+            btnModeRace.className = 'px-3 py-1.5 rounded-xl text-xs font-bold text-slate-300 hover:text-white transition';
+        });
+
+        /**
+         * ============================================================================
+         * ATUALIZAÇÃO DO TEMA DA ESTAÇÃO ATUAL & MINIMAPA
+         * ============================================================================
+         */
+        const minimapBadge = document.getElementById('minimap-line-badge');
+        const minimapStation = document.getElementById('minimap-station-name');
+        const minimapDot = document.getElementById('minimap-player-dot');
+
+        function updateStationTheme(idx) {
+            const st = STATIONS[idx];
+            scene.fog.color.setHex(st.fogColor);
+            wallNeonMat.color.setHex(st.accentHex);
+
+            minimapBadge.textContent = st.line;
+            minimapBadge.style.backgroundColor = st.badgeBg;
+            minimapStation.textContent = st.name;
+        }
+
+        /**
+         * ============================================================================
+         * LOOP PRINCIPAL DE SIMULAÇÃO E RENDERIZAÇÃO 3D
+         * ============================================================================
+         */
+        const hudScoreEl = document.getElementById('hud-score');
+        const hudSpeedEl = document.getElementById('hud-speed');
+        const hudComboEl = document.getElementById('hud-combo');
+        const hudStateEl = document.getElementById('hud-state');
+
+        let lastTime = performance.now();
+
+        function animate(now) {
+            requestAnimationFrame(animate);
+            const dt = Math.min((now - lastTime) / 1000, 0.05);
+            lastTime = now;
+
+            if (!gameState.isPlaying) {
+                // Câmera orbital suave no fundo enquanto está no mapa inicial
+                const t = now * 0.0004;
+                camera.position.set(Math.sin(t) * 3.5, 6.2, 11);
+                camera.lookAt(0, 2, -25);
+                renderer.render(scene, camera);
+                return;
+            }
+
+            // 1. Velocidade e Boost
+            gameState.baseSpeed = Math.min(46, 29 + gameState.distance * 0.0045);
+            if (gameState.boostTimer > 0) {
+                gameState.boostTimer -= dt;
+                gameState.currentSpeed = gameState.baseSpeed * 1.38;
+            } else {
+                gameState.currentSpeed += (gameState.baseSpeed - gameState.currentSpeed) * 5 * dt;
+            }
+
+            const kmh = Math.round(gameState.currentSpeed * 3.35);
+            if (kmh > gameState.maxSpeedRecorded) gameState.maxSpeedRecorded = kmh;
+
+            // Avanço da distância e pontuação contínua
+            const dz = gameState.currentSpeed * dt;
+            gameState.distance += dz;
+            gameState.score += dz * 4.5 * gameState.combo;
+
+            if (gameState.comboTimer > 0) {
+                gameState.comboTimer -= dt;
+                if (gameState.comboTimer <= 0) gameState.combo = 1;
+            }
+
+            // 2. Progresso das Estações de São Paulo
+            let newStationIdx = 0;
+            if (gameState.distance >= 2800) newStationIdx = 3;
+            else if (gameState.distance >= 1900) newStationIdx = 2;
+            else if (gameState.distance >= 900) newStationIdx = 1;
+
+            if (newStationIdx !== gameState.currentStationIndex) {
+                gameState.currentStationIndex = newStationIdx;
+                updateStationTheme(newStationIdx);
+                addStyleScore(`CHEGANDO: ${STATIONS[newStationIdx].name.toUpperCase()}`, 1500, 'text-cyan-300 border-cyan-400/50');
+            }
+
+            // Atualiza bolinha no minimapa (X de 12 até 188)
+            const progressRatio = Math.min(1, gameState.distance / TOTAL_RACE_DISTANCE);
+            const dotX = 12 + progressRatio * 176;
+            minimapDot.setAttribute('transform', `translate(${dotX.toFixed(1)}, 14)`);
+
+            // 3. Portal da Rodoviária do Tietê no Modo Corrida
+            if (gameState.mode === 'race') {
+                const distToFinish = TOTAL_RACE_DISTANCE - gameState.distance;
+                if (distToFinish < 160) {
+                    finishArchGroup.visible = true;
+                    finishArchGroup.position.z = -distToFinish;
+                }
+                if (distToFinish <= 0) {
+                    endGame(true);
+                    return;
+                }
+            }
+
+            // 4. Física Horizontal e Vertical do Jogador
+            const desiredX = gameState.isWallRunning
+                ? (gameState.wallSide * (roadWidth / 2 - 0.55))
+                : gameState.targetX;
+            playerGroup.position.x += (desiredX - playerGroup.position.x) * 14 * dt;
+
+            if (gameState.isGrinding) {
+                gameState.playerY = 1.55;
+                gameState.velY = 0;
+                gameState.score += 120 * dt * gameState.combo;
+            } else if (gameState.isWallRunning) {
+                gameState.velY -= 6 * dt;
+                gameState.playerY += gameState.velY * dt;
+                if (gameState.playerY <= 0.1) {
+                    gameState.isWallRunning = false;
+                    gameState.playerY = 0;
+                }
+            } else if (gameState.isJumping) {
+                gameState.velY -= 36 * dt;
+                gameState.playerY += gameState.velY * dt;
+                if (gameState.playerY <= 0) {
+                    gameState.playerY = 0;
+                    gameState.velY = 0;
+                    gameState.isJumping = false;
+                }
+            }
+
+            // Deslize (Slide)
+            if (gameState.isSliding) {
+                gameState.slideTimer -= dt;
+                playerGroup.scale.y += (0.52 - playerGroup.scale.y) * 18 * dt;
+                if (gameState.slideTimer <= 0) {
+                    gameState.isSliding = false;
+                }
+            } else {
+                playerGroup.scale.y += (1.0 - playerGroup.scale.y) * 16 * dt;
+            }
+
+            playerGroup.position.y = gameState.playerY;
+            playerGlowLight.position.set(playerGroup.position.x, playerGroup.position.y + 1.8, 0);
+
+            // 5. Animação do Boneco Corredor
+            gameState.runCycle += dt * (gameState.currentSpeed * 0.52);
+            const bankAngle = (playerGroup.position.x - desiredX) * 0.18 + (gameState.isWallRunning ? gameState.wallSide * 0.35 : 0);
+            playerGroup.rotation.z = bankAngle;
+
+            if (gameState.isGrinding || gameState.isWallRunning) {
+                leftLeg.rotation.x = 0.4;
+                rightLeg.rotation.x = -0.4;
+                leftArm.rotation.z = -0.7;
+                rightArm.rotation.z = 0.7;
+            } else if (gameState.isJumping) {
+                leftLeg.rotation.x = 0.65;
+                rightLeg.rotation.x = -0.45;
+                leftArm.rotation.x = -0.8;
+                rightArm.rotation.x = -0.8;
+            } else {
+                const swing = Math.sin(gameState.runCycle) * 0.85;
+                leftLeg.rotation.x = swing;
+                rightLeg.rotation.x = -swing;
+                leftArm.rotation.x = -swing * 0.85;
+                rightArm.rotation.x = swing * 0.85;
+                leftArm.rotation.z = 0.1;
+                rightArm.rotation.z = -0.1;
+            }
+
+            // Atualiza rastro neon
+            for (let i = TRAIL_POINTS - 1; i > 0; i--) {
+                trailPositions[i * 3] = trailPositions[(i - 1) * 3];
+                trailPositions[i * 3 + 1] = trailPositions[(i - 1) * 3 + 1];
+                trailPositions[i * 3 + 2] = trailPositions[(i - 1) * 3 + 2] + dz * 0.45;
+            }
+            trailPositions[0] = playerGroup.position.x;
+            trailPositions[1] = playerGroup.position.y + (gameState.isSliding ? 0.45 : 1.05);
+            trailPositions[2] = 0.2;
+            trailGeo.attributes.position.needsUpdate = true;
+            trailMat.color.setHex(gameState.boostTimer > 0 ? 0x38bdf8 : 0xfde047);
+
+            // 6. Cenário Urbano e Prédios em Loop
+            estaiadaGroup.position.z += dz;
+            cityBuildings.forEach(b => {
+                b.mesh.position.z += dz;
+                if (b.signMesh) b.signMesh.position.z += dz;
+                if (b.mesh.position.z > 25) {
+                    b.mesh.position.z -= 270;
+                    if (b.signMesh) b.signMesh.position.z -= 270;
+                }
+            });
+
+            // 7. Atualização e Colisões dos Objetos da Pista
+            nextSpawnZ += dz;
+            while (nextSpawnZ > -160) {
+                generateTrackChunk();
+            }
+
+            let activeRail = false;
+            const pX = playerGroup.position.x;
+            const pY = playerGroup.position.y;
+            const pHeight = gameState.isSliding ? 0.85 : 1.85;
+
+            for (let i = entities.length - 1; i >= 0; i--) {
+                const ent = entities[i];
+                const relSpeed = gameState.currentSpeed - (ent.speedOffset || 0);
+                ent.mesh.position.z += relSpeed * dt;
+                const z = ent.mesh.position.z;
+
+                if (ent.type === 'ring') {
+                    ent.mesh.rotation.z += 2.2 * dt;
+                    if (!ent.collected && Math.abs(z) < 1.5 && Math.abs(pX - ent.mesh.position.x) < 1.25 && Math.abs((pY + 1.0) - ent.mesh.position.y) < 1.5) {
+                        ent.collected = true;
+                        ent.mesh.visible = false;
+                        gameState.boostTimer = 2.6;
+                        sfx.playBoost();
+                        triggerFlash('rgba(56, 189, 248, 0.28)');
+                        addStyleScore('BOOST RING SP', 2500, 'text-sky-300 border-sky-400/60');
+                    }
+                } else if (ent.type === 'rail') {
+                    const halfLen = ent.length / 2;
+                    if (z - halfLen < 0.5 && z + halfLen > -0.5 && Math.abs(pX - ent.mesh.position.x) < 0.95) {
+                        if (pY >= 1.15 && gameState.velY <= 2) {
+                            activeRail = true;
+                            if (!gameState.isGrinding) {
+                                gameState.isGrinding = true;
+                                gameState.isJumping = false;
+                                sfx.playGrind();
+                                addStyleScore('RAIL GRIND METRÔ', 1000, 'text-emerald-300 border-emerald-400/60');
+                            }
+                        }
+                    }
+                } else if (ent.type === 'car') {
+                    const sameLane = Math.abs(pX - ent.mesh.position.x) < 1.15;
+                    // Near Miss (Fino no Trânsito)
+                    if (!ent.nearMissed && z > 0 && z < 2.5 && !sameLane && Math.abs(pX - ent.mesh.position.x) < 2.75) {
+                        ent.nearMissed = true;
+                        sfx.playNearMiss();
+                        addStyleScore('FINO NO TRÂNSITO', 1200, 'text-amber-300 border-amber-400/60');
+                    }
+                    // Colisão com carro
+                    if (Math.abs(z) < 1.95 && sameLane && pY < 1.35) {
+                        endGame(false);
+                        return;
+                    }
+                } else if (ent.type === 'low_barrier') {
+                    if (Math.abs(z) < 0.65 && Math.abs(pX - ent.mesh.position.x) < 1.05 && pY < 0.98) {
+                        endGame(false);
+                        return;
+                    }
+                } else if (ent.type === 'high_barrier') {
+                    if (Math.abs(z) < 0.65 && Math.abs(pX - ent.mesh.position.x) < 1.05 && pHeight > 1.35) {
+                        endGame(false);
+                        return;
+                    }
+                }
+
+                // Remove entidades que já passaram atrás da câmera
+                if (z > 22) {
+                    scene.remove(ent.mesh);
+                    entities.splice(i, 1);
+                }
+            }
+
+            if (gameState.isGrinding && !activeRail) {
+                gameState.isGrinding = false;
+                gameState.isJumping = true;
+                gameState.velY = 5.5;
+            }
+
+            // 8. Câmera Dinâmica e Atualização do HUD
+            const targetCamX = playerGroup.position.x * 0.55;
+            const targetCamY = 4.6 + playerGroup.position.y * 0.55;
+            const targetFov = gameState.boostTimer > 0 ? 74 : 62;
+            camera.position.x += (targetCamX - camera.position.x) * 8 * dt;
+            camera.position.y += (targetCamY - camera.position.y) * 8 * dt;
+            camera.fov += (targetFov - camera.fov) * 6 * dt;
+            camera.updateProjectionMatrix();
+            camera.lookAt(playerGroup.position.x * 0.4, 1.8 + playerGroup.position.y * 0.4, -14);
+
+            // Textos do HUD
+            hudScoreEl.textContent = Math.floor(gameState.score).toLocaleString('pt-BR');
+            hudSpeedEl.innerHTML = `${kmh} <span class="text-xs font-normal">km/h</span>`;
+            hudComboEl.textContent = `${gameState.combo}x`;
+
+            let statusText = 'CORRENDO';
+            let statusColor = 'text-emerald-400';
+            if (gameState.boostTimer > 0) { statusText = 'TURBO BOOST'; statusColor = 'text-cyan-300'; }
+            else if (gameState.isGrinding) { statusText = 'RAIL GRIND'; statusColor = 'text-emerald-300'; }
+            else if (gameState.isWallRunning) { statusText = 'WALL RUN'; statusColor = 'text-amber-300'; }
+            else if (gameState.isJumping) { statusText = 'SALTO'; statusColor = 'text-yellow-300'; }
+            else if (gameState.isSliding) { statusText = 'DESLIZE'; statusColor = 'text-sky-300'; }
+
+            hudStateEl.textContent = statusText;
+            hudStateEl.className = `text-xs sm:text-sm font-extrabold font-mono-tech leading-tight ${statusColor}`;
+
+            renderer.render(scene, camera);
+        }
+
+        // Redimensionamento responsivo (Portrait / Landscape)
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        window.onload = () => {
+            requestAnimationFrame(animate);
+        };
+    </script>
+</body>
+</html>
